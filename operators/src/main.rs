@@ -33,4 +33,10 @@ fn main() {
 
     println!("Boarding Pass: {}, ID: {}", have_boarding_pass, have_id);
     println!("Can board plane: {}", can_board);
+
+    // > < operators
+    let _is_larger = 2 > 1;
+    let _is_larger_or_equal = 2 >= 2;
+    let _is_smaller = 1 < 4;
+    let _is_smaller_or_equal = 4 <= 4;
 } 
