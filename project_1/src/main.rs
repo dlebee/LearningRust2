@@ -54,7 +54,7 @@ fn main() {
                     (waitpoint.1, waitpoint.2)
                 );
 
-                route_path = format!("{} -> ({:.4}KM) -> {}", 
+                route_path = format!("{} -> ({:.2}KM) -> {}", 
                     route_path, distance, waitpoint.0);
 
                 total_distance += distance;
@@ -63,5 +63,5 @@ fn main() {
         }
     }
 
-    println!("Total distance of route {} is {:.4}KM", route_path, total_distance);
+    println!("Total distance of route {} is {:.2}KM", route_path, total_distance);
 }
