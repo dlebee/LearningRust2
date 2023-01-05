@@ -1,38 +1,19 @@
 #[allow(irrefutable_let_patterns)]
 
 fn main() {
-    let _animal = "Duck";
+    let mut _animal = "Duck";
 
-
-    // the video says that, but im convinced its not true because
-    // when i run cargo expand i see the else if dog there.
-
-    // if let will only include code in compilation
-    // if the condition is irrefutable (not impossible)
+    // let _animal will assigned the right value but also check if its true
+    // meaning won't be part of comopilation message isn't part of assembly code
+    // because rust can determine it not irrefutable?
     if let _animal = "Duck" {
-        println!("Qack");
-    } else if let _animal = "Dog" {
-        println!("Woof!"); // this else if won't be in compiled code.
+        println!("Quack");
+    } else {
+        println!("won't be part of compilation");
     }
 }
 
-/* compiled code.
-#![feature(prelude_import)]
-#[prelude_import]
-use std::prelude::rust_2021::*;
-#[macro_use]
-extern crate std;
-#[allow(irrefutable_let_patterns)]
-fn main() {
-    let _animal = "Duck";
-    if let _animal = "Duck" {
-        {
-            ::std::io::_print(::core::fmt::Arguments::new_v1(&["Qack\n"], &[]));
-        };
-    } else if let _animal = "Dog" {
-        {
-            ::std::io::_print(::core::fmt::Arguments::new_v1(&["Woof!\n"], &[]));
-        };
-    }
-}
+/*
+using cargo rustc --release -- --emit asm you can see that the Woof is never emitted to asm.
 */
+   
