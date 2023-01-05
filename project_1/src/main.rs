@@ -32,6 +32,7 @@ fn main() {
     let route = [
         ("YUL", 45.478056, -73.744167),
         ("FLL", 26.0725, -80.152778),
+        ("CDG", 49.012779, 2.55),
         ("TLV", 32.011389, 34.886667),
     ];
 
@@ -43,21 +44,24 @@ fn main() {
 
         match previous_waypoint {
             None => {
-                route_path = waitpoint.0.to_string();
+                route_path = format!("{}", waitpoint.0);
                 previous_waypoint = Option::from(waitpoint.clone());
                 continue;
             },
             Some(previous_waypoint_value) => {
-                route_path = route_path + " -> " + waitpoint.0;
                 let distance = calculate_distance(
                     (previous_waypoint_value.1, previous_waypoint_value.2),
                     (waitpoint.1, waitpoint.2)
                 );
+
+                route_path = format!("{} -> ({:.4}KM) -> {}", 
+                    route_path, distance, waitpoint.0);
+
                 total_distance += distance;
                 previous_waypoint = Option::from(previous_waypoint_value.clone());
             }
         }
     }
 
-    println!("Total distance of route {} is {}", route_path, total_distance);
+    println!("Total distance of route {} is {:.4}KM", route_path, total_distance);
 }
