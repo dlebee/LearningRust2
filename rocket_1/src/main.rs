@@ -1,8 +1,8 @@
 use rocket::tokio::time::{sleep, Duration};
 
-use rocket::serde::{Serialize, json::Json};
+use rocket::serde::{Serialize, Deserialize, json::Json};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Contact {
     first_name: String,
@@ -30,6 +30,11 @@ fn contact_info() -> Json<Contact> {
     Json(result)
 }
 
+#[post("/add-contact", format = "json", data = "<contact>")]
+fn add_contact(contact: Json<Contact>) -> String {
+    format!("{} {}", contact.first_name, contact.last_name)
+}
+
 
 #[get("/delay/<seconds>")]
 async fn delay(seconds: u64) -> String {
@@ -45,5 +50,5 @@ fn echo(message: &str) -> String {
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![index, about, delay, echo, contact_info])
+        .mount("/", routes![index, about, delay, echo, contact_info, add_contact])
 }
