@@ -1,5 +1,4 @@
 use ethers::providers::{Provider, Ws, Http, Middleware};
-use ethers::core::types::BlockId;
 
 pub struct NetworkConfiguration {
     pub name: String,
@@ -30,19 +29,27 @@ pub struct NetworkService {
 
 impl Network {
     pub async fn initialize(&mut self) {
-        println!("Initializing network {} creating web socket provider...", self.name);
+        println!("⚡ Initializing network {} creating web socket provider...", self.name);
         let wss_provider = Provider::<Ws>::connect(self.wss.to_string()).await;
+        println!("⚡ Initializing network {} creating http provider...", self.name);
         let http_provider = Provider::<Http>::try_from(self.rpc.to_string());
 
         let wss_provider_unwrapped = wss_provider.unwrap();
         let http_provider_unwrapped = http_provider.unwrap();
 
-        let chain_id = http_provider_unwrapped.get_chainid().await;
+
+        println!("🔢 Getting chain id for network {}", self.name);
+        let wss_chain_id = wss_provider_unwrapped.get_chainid().await.unwrap();
+        let http_chain_id = http_provider_unwrapped.get_chainid().await.unwrap();
+
+        if wss_chain_id != http_chain_id {
+            panic!("Should be the same chain id between http and wss {} != {}", wss_chain_id, http_chain_id);
+        }
 
         self.initialized = Some(InitializedNetwork{
             wss: wss_provider_unwrapped,
             http: http_provider_unwrapped,
-            chain_id: chain_id.unwrap().as_u64()
+            chain_id: wss_chain_id.as_u64()
         });
     }
 }
