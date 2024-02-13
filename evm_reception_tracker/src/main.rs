@@ -1,6 +1,7 @@
 mod network;
 
 use crate::network::{NetworkConfiguration, NetworkService};
+use tokio::signal;
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +21,9 @@ async fn main() {
 
     network_service.initialize().await;
 
-    for network in network_service.networks {
-        println!("name: {}, chain id: {}", network.name, network.initialized.unwrap().chain_id);
-    }
+    // Create a stream for Ctrl+C signals
+    println!("Running. Press Ctrl+C to exit.");
+    let mut _ctrl_c = signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+
+    network_service.cleanup().await;
 }
