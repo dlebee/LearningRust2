@@ -1,0 +1,11 @@
+[package]
+name = "evm_reception_tracker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ethers = { features = ["abigen", "ws", "rustls"] }
+tokio = { features = ["full"] }
+eyre = { version = "0.6", features = [] }
