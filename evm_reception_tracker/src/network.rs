@@ -1,8 +1,5 @@
-use std::fmt::format;
-use std::sync::Arc;
 use ethers::providers::{Provider, Ws, Http, Middleware};
-use tokio_stream::{StreamExt, StreamMap, Stream};
-use ethers::types::U256;
+use tokio_stream::{StreamExt, StreamMap};
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -97,7 +94,7 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, Provider<Ws>)>)
                 map.insert(network_configuration.name.clone(), stream);
             },
             Err(e) => {
-                return Err(format!("failed to create block subscription for network {}", network_configuration.name));
+                return Err(format!("failed to create block subscription for network {}, error: {}", network_configuration.name, e));
             }
         }
     }

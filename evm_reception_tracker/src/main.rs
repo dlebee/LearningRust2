@@ -1,6 +1,5 @@
 mod network;
 
-use std::sync::Arc;
 use crate::network::{NetworkConfiguration, NetworkService};
 use tokio::signal;
 
