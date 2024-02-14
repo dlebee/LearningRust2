@@ -51,9 +51,27 @@ impl Network {
         }
 
 
-        println!("🔢 Getting chain id for network {}", network_configuration.name);
-        let wss_chain_id = wss_provider.get_chainid().await.unwrap();
-        let http_chain_id = http_provider.get_chainid().await.unwrap();
+        println!("🔢 Getting chain id for network {} using websocket", network_configuration.name);
+        let wss_chain_id;
+        match wss_provider.get_chainid().await {
+            Ok(chain_id) => {
+                wss_chain_id = chain_id
+            },
+            Err(e) => {
+                return Err(format!("failed to get websocket chain id for network {}, error: {}", network_configuration.name, e));
+            }
+        }
+
+        println!("🔢 Getting chain id for network {} using https", network_configuration.name);
+        let http_chain_id;
+        match http_provider.get_chainid().await {
+            Ok(chain_id) => {
+                http_chain_id = chain_id
+            },
+            Err(e) => {
+                return Err(format!("failed to get http chain id for network {}, error: {}", network_configuration.name, e));
+            }
+        }
 
         if wss_chain_id != http_chain_id {
             return Err(format!("Should be the same chain id between http and wss {} != {}", wss_chain_id, http_chain_id));
