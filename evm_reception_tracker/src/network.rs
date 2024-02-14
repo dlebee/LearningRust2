@@ -1,4 +1,6 @@
-use ethers::providers::{Provider, Ws, Http, Middleware};
+use std::{sync::{mpsc::{self, Sender}}};
+
+use ethers::{providers::{Http, Middleware, Provider, Ws}};
 use tokio_stream::{StreamExt, StreamMap};
 
 #[derive(Debug)]
@@ -10,6 +12,7 @@ pub struct NetworkConfiguration {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Network {
 
     pub config: NetworkConfiguration,
@@ -84,14 +87,14 @@ impl Network {
     }
 }
 
-pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, Provider<Ws>)>) -> Result<(), String> {
+pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<Ws>)>, sender: Sender<(u64, u64)>) -> Result<(), String> {
     let mut map = StreamMap::new();
     for pair in &pairs {
-        let (network_configuration, provider) = pair;
+        let (network_configuration, chain_id, provider) = pair;
 
         match provider.subscribe_blocks().await {
             Ok(stream) => {
-                map.insert(network_configuration.name.clone(), stream);
+                map.insert(chain_id, stream);
             },
             Err(e) => {
                 return Err(format!("failed to create block subscription for network {}, error: {}", network_configuration.name, e));
@@ -101,8 +104,26 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, Provider<Ws>)>)
 
     loop {
         tokio::select! {
-            Some((name, block)) = map.next() => {
-                println!("📦 New block for {} is {}", name, block.number.unwrap());
+            Some((chain_id, block)) = map.next() => {
+
+                
+
+                
+
+
+                let cloned_chain_id = chain_id.clone();
+                let cloned_block_number = block.number.unwrap().as_u64();
+
+
+                match sender.send((cloned_chain_id, cloned_block_number)) {
+                    Ok(_) => {
+
+                    },
+                    Err(e) => {
+                        eprint!("failed to send through channel the new block, chain id: {} new block: {}, error: {}", 
+                            cloned_chain_id, cloned_block_number, e);
+                    }
+                }
             }
         }
     }
@@ -114,18 +135,40 @@ impl NetworkService {
 
         let mut networks: Vec<Network> = Vec::new();
 
+        let (sender, receiver) = mpsc::channel::<(u64, u64)>();
+
         for network_configuration in network_configurations {
             let network = Network::try_initialize(network_configuration).await?;
             networks.push(network);
         }
 
-        let mut chain_and_provider: Vec<(NetworkConfiguration, Provider<Ws>)> = Vec::new();
+        let mut chain_and_provider: Vec<(NetworkConfiguration, u64, Provider<Ws>)> = Vec::new();
         for network in &mut networks {
-            chain_and_provider.push((network.config.clone(), network.wss.clone()));
+            chain_and_provider.push((network.config.clone(), network.chain_id, network.wss.clone()));
         }
 
         if chain_and_provider.len() > 0 {
-            let _network_block_watcher = tokio::spawn(async move { listen_for_blocks(chain_and_provider).await });
+            let _network_block_watcher = tokio::spawn(async move { 
+                listen_for_blocks(chain_and_provider, sender).await 
+            });
+
+            let cloned_networks = networks.clone();
+            let _block_updater = tokio::spawn(async move {
+                 loop {
+                    match receiver.recv() {
+                        Ok((chain_id, block_number)) => {
+                            for network in &cloned_networks {
+                                if network.chain_id == chain_id {
+                                    println!("📦 New block picked up, chainId {}, name: {}, block: {}", chain_id, network.config.name.clone(), block_number);
+                                }
+                            }
+                        },
+                        Err(_) => {
+
+                        }
+                    }
+                 } 
+            });
         }
 
         Ok(Self {
