@@ -1,25 +1,21 @@
+use std::fmt::format;
+use std::sync::Arc;
 use ethers::providers::{Provider, Ws, Http, Middleware};
 use tokio_stream::{StreamExt, StreamMap, Stream};
 use ethers::types::U256;
 
+#[derive(Debug)]
+#[derive(Clone)]
 pub struct NetworkConfiguration {
     pub name: String,
     pub wss: String,
     pub rpc: String
 }
 
-
 #[derive(Debug)]
 pub struct Network {
-    pub name: String,
-    pub wss: String,
-    pub rpc: String,
 
-    pub initialized: Option<InitializedNetwork>
-}
-
-#[derive(Debug)]
-pub struct InitializedNetwork {
+    pub config: NetworkConfiguration,
     pub wss: Provider<Ws>,
     pub http: Provider<Http>,
     pub chain_id: u64
@@ -27,46 +23,66 @@ pub struct InitializedNetwork {
 
 pub struct NetworkService {
     pub networks: Vec<Network>
-
-
 }
 
 impl Network {
-    pub async fn initialize(&mut self) {
-        println!("⚡ Initializing network {} creating web socket provider...", self.name);
-        let wss_provider = Provider::<Ws>::connect(self.wss.to_string()).await;
-        println!("⚡ Initializing network {} creating http provider...", self.name);
-        let http_provider = Provider::<Http>::try_from(self.rpc.to_string());
+    pub async fn try_initialize(network_configuration: NetworkConfiguration) -> Result<Self, String> {
 
-        let wss_provider_unwrapped = wss_provider.unwrap();
-        let http_provider_unwrapped = http_provider.unwrap();
-
-
-        println!("🔢 Getting chain id for network {}", self.name);
-        let wss_chain_id = wss_provider_unwrapped.get_chainid().await.unwrap();
-        let http_chain_id = http_provider_unwrapped.get_chainid().await.unwrap();
-
-        if wss_chain_id != http_chain_id {
-            panic!("Should be the same chain id between http and wss {} != {}", wss_chain_id, http_chain_id);
+        println!("⚡ Initializing network {} creating web socket provider...", network_configuration.name);
+        let wss_provider;
+        match Provider::<Ws>::connect(network_configuration.wss.to_string()).await {
+            Ok(wss_provider_result) => {
+                wss_provider = wss_provider_result;
+            },
+            Err(e) => {
+                return Err(format!("failed to initialize wss provider {}", e));
+            }
         }
 
-        println!("🔢 Chain ID for {} is {}", self.name, http_chain_id);
+        println!("⚡ Initializing network {} creating http provider...", network_configuration.name);
+        let http_provider;
+        match Provider::<Http>::try_from(network_configuration.rpc.to_string()) {
+            Ok(http_provider_result) => {
+                http_provider = http_provider_result;
+            },
+            Err(e) => {
+                return Err(format!("failed to initialize http provider {}", e));
+            }
+        }
 
-        self.initialized = Some(InitializedNetwork{
-            wss: wss_provider_unwrapped,
-            http: http_provider_unwrapped,
-            chain_id: wss_chain_id.as_u64()
-        });
+
+        println!("🔢 Getting chain id for network {}", network_configuration.name);
+        let wss_chain_id = wss_provider.get_chainid().await.unwrap();
+        let http_chain_id = http_provider.get_chainid().await.unwrap();
+
+        if wss_chain_id != http_chain_id {
+            return Err(format!("Should be the same chain id between http and wss {} != {}", wss_chain_id, http_chain_id));
+        }
+
+        println!("🔢 Chain ID for {} is {}", network_configuration.name, http_chain_id);
+        Ok(Self {
+            config: network_configuration,
+            chain_id: http_chain_id.as_u64(),
+            wss: wss_provider,
+            http: http_provider
+        })
     }
 }
 
-pub async fn listen_for_blocks(pairs: Vec<(u64, String, Provider<Ws>)>) {
+pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, Provider<Ws>)>) -> Result<(), String> {
     let mut map = StreamMap::new();
     for pair in &pairs {
-        let stream = pair.2.subscribe_blocks().await.unwrap();
-        map.insert(pair.1.clone(), stream);
-    }
+        let (network_configuration, provider) = pair;
 
+        match provider.subscribe_blocks().await {
+            Ok(stream) => {
+                map.insert(network_configuration.name.clone(), stream);
+            },
+            Err(e) => {
+                return Err(format!("failed to create block subscription for network {}", network_configuration.name));
+            }
+        }
+    }
 
     loop {
         tokio::select! {
@@ -78,44 +94,28 @@ pub async fn listen_for_blocks(pairs: Vec<(u64, String, Provider<Ws>)>) {
 }
 
 impl NetworkService {
-    pub fn new(network_configurations: Vec<NetworkConfiguration>) -> Self {
 
-        let networks: Vec<Network> = network_configurations.into_iter().map(|network| {
-            Network {
-                name: network.name,
-                wss: network.wss,
-                rpc: network.rpc,
-                initialized: None
-            }
-        }).collect();
+    pub async fn try_initialize(network_configurations: Vec<NetworkConfiguration>) -> Result<Self, String> {
 
-        Self {
-            networks
+        let mut networks: Vec<Network> = Vec::new();
+
+        for network_configuration in network_configurations {
+            let network = Network::try_initialize(network_configuration).await?;
+            networks.push(network);
         }
-    }
 
-
-    pub async fn initialize(&mut self) {
-
-        let mut chain_and_provider: Vec<(u64, String, Provider<Ws>)> = Vec::new();
-
-        for network in &mut self.networks {
-            network.initialize().await;
-
-            match &network.initialized {
-                Some(initialized) => {
-                    let pair = (initialized.chain_id, network.name.clone(), initialized.wss.clone());
-                    chain_and_provider.push(pair);
-                },
-                None => {
-                    eprintln!("network {} was not initialized", network.name);
-                }
-            };
+        let mut chain_and_provider: Vec<(NetworkConfiguration, Provider<Ws>)> = Vec::new();
+        for network in &mut networks {
+            chain_and_provider.push((network.config.clone(), network.wss.clone()));
         }
 
         if chain_and_provider.len() > 0 {
             let _network_block_watcher = tokio::spawn(async move { listen_for_blocks(chain_and_provider).await });
         }
+
+        Ok(Self {
+            networks
+        })
     }
 
     pub async fn cleanup(&mut self) {

@@ -6,7 +6,7 @@ use tokio::signal;
 #[tokio::main]
 async fn main() {
 
-    let mut network_service = NetworkService::new(vec![
+    let mut network_service = NetworkService::try_initialize(vec![
         NetworkConfiguration {
             name: String::from("Creditcoin Testnet"),
             rpc: String::from("https://rpc.cc3-testnet.creditcoin.network"),
@@ -17,9 +17,7 @@ async fn main() {
             rpc: String::from("https://rpc.cc3-devnet.creditcoin.network"),
             wss: String::from("wss://rpc.cc3-devnet.creditcoin.network")
         },
-    ]);
-
-    network_service.initialize().await;
+    ]).await.unwrap();
 
     // Create a stream for Ctrl+C signals
     println!("Running. Press Ctrl+C to exit.");
