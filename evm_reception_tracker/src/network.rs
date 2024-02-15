@@ -1,4 +1,5 @@
 use std::{sync::{mpsc::{self, Sender}}};
+use std::sync::{Arc, Mutex};
 
 use ethers::{providers::{Http, Middleware, Provider, Ws}};
 use tokio_stream::{StreamExt, StreamMap};
@@ -18,11 +19,12 @@ pub struct Network {
     pub config: NetworkConfiguration,
     pub wss: Provider<Ws>,
     pub http: Provider<Http>,
-    pub chain_id: u64
+    pub chain_id: u64,
+    pub latest_block: u64
 }
 
 pub struct NetworkService {
-    pub networks: Vec<Network>
+    pub networks: Arc<Mutex<Vec<Network>>>
 }
 
 impl Network {
@@ -82,7 +84,8 @@ impl Network {
             config: network_configuration,
             chain_id: http_chain_id.as_u64(),
             wss: wss_provider,
-            http: http_provider
+            http: http_provider,
+            latest_block: 0
         })
     }
 }
@@ -147,21 +150,36 @@ impl NetworkService {
             chain_and_provider.push((network.config.clone(), network.chain_id, network.wss.clone()));
         }
 
+        let arc_networks = Arc::new(Mutex::new(networks));
+
         if chain_and_provider.len() > 0 {
             let _network_block_watcher = tokio::spawn(async move { 
                 listen_for_blocks(chain_and_provider, sender).await 
             });
 
-            let cloned_networks = networks.clone();
+            let cloned_arc = arc_networks.clone();
             let _block_updater = tokio::spawn(async move {
                  loop {
                     match receiver.recv() {
                         Ok((chain_id, block_number)) => {
-                            for network in &cloned_networks {
+
+                            let mut networks = cloned_arc.lock().unwrap();
+                            for network in &mut *networks {
                                 if network.chain_id == chain_id {
-                                    println!("📦 New block picked up, chainId {}, name: {}, block: {}", chain_id, network.config.name.clone(), block_number);
+
+                                    let previous_network_block = network.latest_block;
+                                    network.latest_block = block_number;
+
+                                    if previous_network_block > 0 {
+                                        println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
+                                                 chain_id, network.config.name.clone(), block_number, previous_network_block);
+                                    } else {
+                                        println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
+                                                 chain_id, network.config.name.clone(), block_number);
+                                    }
                                 }
                             }
+
                         },
                         Err(_) => {
 
@@ -172,7 +190,7 @@ impl NetworkService {
         }
 
         Ok(Self {
-            networks
+            networks: arc_networks
         })
     }
 
