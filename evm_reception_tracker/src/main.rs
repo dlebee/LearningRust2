@@ -23,5 +23,13 @@ async fn main() {
     println!("Running. Press Ctrl+C to exit.");
     let mut _ctrl_c = signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
 
+    {
+        let networks = network_service.networks.lock().unwrap();
+        for n in &*networks {
+            println!("{} latest block at shutdown: {}", n.config.name, n.latest_block);
+        }
+    }
+
+
     network_service.cleanup().await;
 }
