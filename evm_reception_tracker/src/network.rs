@@ -1,7 +1,7 @@
 use std::{sync::{atomic::AtomicBool, mpsc::{self, Sender}}, time::Duration};
 use std::sync::{Arc, Mutex};
 
-use ethers::{providers::{Http, Middleware, Provider, Ws}};
+use ethers::{providers::{Http, Middleware, Provider, Ws}, types::Filter};
 use tokio::time;
 use tokio_stream::{StreamExt, StreamMap};
 
@@ -167,6 +167,7 @@ impl NetworkService {
         let cloned_arc = arc_networks.clone();
         let arc_stop_cloned2 = arc_stop.clone();
         let _block_updater = tokio::spawn(async move {
+
             loop {
                 match receiver.recv_timeout(Duration::from_millis(1000)) {
                     Ok((chain_id, block_number)) => {
@@ -185,9 +186,29 @@ impl NetworkService {
                                     println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
                                                 chain_id, network.config.name.clone(), block_number);
                                 }
+                            
+                                // // Define the Transfer event signature
+                                // let event_signature = "Transfer(address,address,uint256)";
+
+                                // let filter = Filter::new()
+                                //     .event(event_signature)
+                                //     .from_block(block_number)
+                                //     .to_block(block_number);
+
+                                // let logs = network.http.clone().get_logs(&filter).await;
+                                // match logs {
+                                //     Ok(logs) => {
+                                //         for log in logs {
+                                //             println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
+                                //         }
+                                //     },
+                                //     Err(err) => {
+                                //         eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
+                                //     }
+                                // }   
                             }
                         }
-
+                                  
                     },
                     Err(_) => {
 
