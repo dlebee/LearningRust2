@@ -1,4 +1,4 @@
-use std::{sync::mpsc::{self, Sender}, time::Duration};
+use std::{sync::{atomic::AtomicBool, mpsc::{self, Sender}}, time::Duration};
 use std::sync::{Arc, Mutex};
 
 use ethers::{providers::{Http, Middleware, Provider, Ws}};
@@ -26,8 +26,7 @@ pub struct Network {
 
 pub struct NetworkService {
     pub networks: Arc<Mutex<Vec<Network>>>,
-    
-    stopping: Arc<Mutex<bool>>
+    stopping: Arc<AtomicBool>
 }
 
 impl Network {
@@ -93,7 +92,7 @@ impl Network {
     }
 }
 
-pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<Ws>)>, sender: Sender<(u64, u64)>, stop: Arc<Mutex<bool>>) -> Result<(), String> {
+pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<Ws>)>, sender: Sender<(u64, u64)>, stop: Arc<AtomicBool>) -> Result<(), String> {
     let mut map = StreamMap::new();
     for pair in &pairs {
         let (network_configuration, chain_id, provider) = pair;
@@ -130,7 +129,7 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
             }
         }
 
-        let should_stop = *stop.lock().unwrap();
+        let should_stop = stop.load(std::sync::atomic::Ordering::Relaxed);
         if should_stop {
             break;
         }
@@ -159,8 +158,7 @@ impl NetworkService {
 
         let arc_networks = Arc::new(Mutex::new(networks));
 
-        let arc_stop = Arc::new(Mutex::new(false));
-
+        let arc_stop = Arc::new(AtomicBool::new(false));
         let arc_cloned = arc_stop.clone();
         let _network_block_watcher = tokio::spawn(async move { 
             listen_for_blocks(chain_and_provider, sender, arc_cloned).await 
@@ -196,7 +194,7 @@ impl NetworkService {
                     }
                 }
 
-                let should_stop = *arc_stop_cloned2.lock().unwrap();
+                let should_stop = arc_stop_cloned2.load(std::sync::atomic::Ordering::Relaxed);
                 if should_stop {
                     break;
                 }
@@ -210,6 +208,6 @@ impl NetworkService {
     }
 
     pub async fn cleanup(&mut self) {
-        *self.stopping.lock().unwrap() = true;
+        self.stopping.store(true, std::sync::atomic::Ordering::Release);
     }
 }
