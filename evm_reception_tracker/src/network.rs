@@ -6,6 +6,8 @@ use std::sync::Mutex;
 use tokio::time;
 use tokio_stream::{StreamExt, StreamMap};
 
+use crate::network;
+
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct NetworkConfiguration {
@@ -155,6 +157,8 @@ pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<Ato
         match receiver.recv_timeout(Duration::from_millis(1000)) {
             Ok((chain_id, block_number)) => {
 
+                let mut matched_network: Option<&Network> = None;
+
                 let mut networks = arc_networks.lock().unwrap(); 
                 for network in &mut *networks {
                     if network.chain_id == chain_id {
@@ -169,35 +173,44 @@ pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<Ato
                             println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
                                         chain_id, network.config.name.clone(), block_number);
                         }
-                    
-                    
-                        // // Define the Transfer event signature
-                        // let event_signature = "Transfer(address,address,uint256)";
 
-                        // let filter = Filter::new()
-                        //     .event(event_signature)
-                        //     .from_block(block_number)
-                        //     .to_block(block_number);
-
-                        // let logs = network.http.clone().get_logs(&filter).await;
-                        // match logs {
-                        //     Ok(logs) => {
-
-                        //         if logs.len() == 0 {
-                        //             println!("No transfers in block {}", block_number);
-                        //         }
-
-                        //         for log in logs {
-                        //             println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
-                        //         }
-                        //     },
-                        //     Err(_) => {
-                        //         eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
-                        //     }
-                        // }   
+                        matched_network = Some(network);
+                        break;
                     }
                 }
 
+                match matched_network {
+                    Some(network) => {
+                        // Define the Transfer event signature
+                        let event_signature = "Transfer(address,address,uint256)";
+
+                        let filter = Filter::new()
+                            .event(event_signature)
+                            .from_block(block_number)
+                            .to_block(block_number);
+
+                        let logs = network.http.get_logs(&filter).await;
+                        match logs {
+                            Ok(logs) => {
+
+                                if logs.len() == 0 {
+                                    println!("No transfers in block {}", block_number);
+                                }
+
+                                for log in logs {
+                                    println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
+                                }
+                            },
+                            Err(_) => {
+                                eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
+                            }
+                        }   
+                    },
+                    None => {
+
+                    }
+                }
+                    
                 println!("out of the network loop, expect network mutex to be released here");
             },
 
