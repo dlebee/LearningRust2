@@ -1,12 +1,10 @@
 use std::{sync::{atomic::AtomicBool}, time::Duration};
 use std::sync::{Arc};
 
-use ethers::{core::k256::elliptic_curve::rand_core::block, providers::{Http, Middleware, Provider, Ws}, types::Filter};
+use ethers::{abi::AbiEncode, providers::{Http, Middleware, Provider, Ws}, types::{H160}};
 use std::sync::Mutex;
-use tokio::{sync::mpsc::{self, channel, Sender}, time};
+use tokio::{sync::mpsc::{self, Sender}, time};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt, StreamMap};
-
-use crate::network;
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -189,16 +187,15 @@ pub async fn get_transfers(
                             Some(block) => {
                                 for transaction in block.transactions {
                                     if transaction.input.len() == 0 {
-                                        println!("💵 chain: {} hash: {}, index: {:?}, from: {}, to: {:?}, ctc transfered: {}", 
+                                        println!("💵 New Transfer for chain: {} hash: {}, index: {:?}, from: {}, to: {}, ctc transfered: {}", 
                                             chain_name,
-                                            transaction.hash,
+                                            transaction.hash.encode_hex(),
                                             transaction.transaction_index,
-                                            transaction.from,
-                                            transaction.to,
+                                            transaction.from.encode_hex(),
+                                            transaction.to.unwrap_or_else(|| H160::zero()).encode_hex(),
                                             transaction.value
                                         );
                                     }
-                                    
                                 }
                             }, 
                             None => {
