@@ -1,7 +1,7 @@
 use std::{sync::{atomic::AtomicBool}, time::Duration};
 use std::sync::{Arc};
 
-use ethers::{providers::{Http, Middleware, Provider, Ws}, types::Filter};
+use ethers::{core::k256::elliptic_curve::rand_core::block, providers::{Http, Middleware, Provider, Ws}, types::Filter};
 use std::sync::Mutex;
 use tokio::{sync::mpsc::{self, channel, Sender}, time};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt, StreamMap};
@@ -141,7 +141,6 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
     return Ok(());
 }
 
-
 pub async fn get_transfers(
     arc_networks: Arc<Mutex<Vec<Network>>>,
     stop: Arc<AtomicBool>,
@@ -157,6 +156,7 @@ pub async fn get_transfers(
                 let (chain_id, block_number) = pair;
 
                 let mut matched_http_provider: Option<Provider<Http>> = None;
+                let mut chain_name: String = String::from("Unknown");
 
                 {
                     let mut networks = arc_networks.lock().unwrap();
@@ -175,6 +175,7 @@ pub async fn get_transfers(
                             }
 
                             matched_http_provider = Some(network.http.clone());
+                            chain_name = network.config.name.clone();
                             break;
                         }
                     }
@@ -182,30 +183,30 @@ pub async fn get_transfers(
 
                 match matched_http_provider {
                     Some(http_provider) => {
-                        // Define the Transfer event signature
-                        let event_signature = "Transfer(address,address,uint256)";
 
-                        let filter = Filter::new()
-                            .event(event_signature)
-                            .from_block(block_number)
-                            .to_block(block_number);
-
-                        let logs = http_provider.get_logs(&filter).await;
-                        match logs {
-                            Ok(logs) => {
-
-                                if logs.len() == 0 {
-                                    println!("No transfers in block {}", block_number);
+           
+                        let block_option = http_provider.get_block_with_txs(block_number).await.unwrap();
+                        match block_option {
+                            Some(block) => {
+                                for transaction in block.transactions {
+                                    if transaction.input.len() == 0 {
+                                        println!("chain: {} hash: {}, index: {:?}, from: {}, to: {:?}, ctc transfered: {}", 
+                                            chain_name,
+                                            transaction.hash,
+                                            transaction.transaction_index,
+                                            transaction.from,
+                                            transaction.to,
+                                            transaction.value
+                                        );
+                                    }
+                                    
                                 }
-
-                                for log in logs {
-                                    println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
-                                }
-                            },
-                            Err(_) => {
-                                eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
+                            }, 
+                            None => {
+                                eprintln!("could not find block {} on chain {}", block_number, chain_id);
                             }
-                        }   
+                        }
+
                     },
                     None => {
 
