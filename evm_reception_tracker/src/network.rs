@@ -1,10 +1,10 @@
-use std::{sync::{atomic::AtomicBool, mpsc::{self, Sender}}, time::Duration};
+use std::{sync::{atomic::AtomicBool}, time::Duration};
 use std::sync::{Arc};
 
 use ethers::{providers::{Http, Middleware, Provider, Ws}, types::Filter};
 use std::sync::Mutex;
-use tokio::time;
-use tokio_stream::{StreamExt, StreamMap};
+use tokio::{sync::mpsc::{self, channel, Sender}, time};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt, StreamMap};
 
 use crate::network;
 
@@ -117,8 +117,7 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
                 let cloned_block_number = block.number.unwrap().as_u64();
 
                 println!("sending new block {} {}", cloned_chain_id, cloned_block_number);
-
-                match sender.send((cloned_chain_id, cloned_block_number)) {
+                match sender.send((cloned_chain_id, cloned_block_number)).await {
                     Ok(()) => {
 
                     },
@@ -143,44 +142,46 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
 }
 
 
-pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<AtomicBool>, receiver: mpsc::Receiver<(u64, u64)>) -> Result<(), String> {
+pub async fn get_transfers(
+    arc_networks: Arc<Mutex<Vec<Network>>>,
+    stop: Arc<AtomicBool>,
+    receiver: mpsc::Receiver<(u64, u64)>,
+) -> Result<(), String> {
+    // Convert the receiver into a stream outside the loop
+    let mut stream = ReceiverStream::new(receiver);
 
     loop {
+        tokio::select! {
+            // Process messages from the stream
+            Some(pair) = stream.next() => {
+                let (chain_id, block_number) = pair;
 
-        // if we are asked to stop :)
-        let should_stop = stop.load(std::sync::atomic::Ordering::Relaxed);
-        if should_stop {
-            break;
-        }
+                let mut matched_http_provider: Option<Provider<Http>> = None;
 
-        // attempt to see if we are receiving a block, with a timeout to loop again in 1000ms.
-        match receiver.recv_timeout(Duration::from_millis(1000)) {
-            Ok((chain_id, block_number)) => {
+                {
+                    let mut networks = arc_networks.lock().unwrap();
+                    for network in &mut *networks {
+                        if network.chain_id == chain_id {
 
-                let mut matched_network: Option<&Network> = None;
+                            let previous_network_block = network.latest_block;
+                            network.latest_block = block_number;
 
-                let mut networks = arc_networks.lock().unwrap(); 
-                for network in &mut *networks {
-                    if network.chain_id == chain_id {
+                            if previous_network_block > 0 {
+                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
+                                            chain_id, network.config.name.clone(), block_number, previous_network_block);
+                            } else {
+                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
+                                            chain_id, network.config.name.clone(), block_number);
+                            }
 
-                        let previous_network_block = network.latest_block;
-                        network.latest_block = block_number;
-
-                        if previous_network_block > 0 {
-                            println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
-                                        chain_id, network.config.name.clone(), block_number, previous_network_block);
-                        } else {
-                            println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
-                                        chain_id, network.config.name.clone(), block_number);
+                            matched_http_provider = Some(network.http.clone());
+                            break;
                         }
-
-                        matched_network = Some(network);
-                        break;
                     }
                 }
 
-                match matched_network {
-                    Some(network) => {
+                match matched_http_provider {
+                    Some(http_provider) => {
                         // Define the Transfer event signature
                         let event_signature = "Transfer(address,address,uint256)";
 
@@ -189,7 +190,7 @@ pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<Ato
                             .from_block(block_number)
                             .to_block(block_number);
 
-                        let logs = network.http.get_logs(&filter).await;
+                        let logs = http_provider.get_logs(&filter).await;
                         match logs {
                             Ok(logs) => {
 
@@ -210,12 +211,12 @@ pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<Ato
 
                     }
                 }
-                    
-                println!("out of the network loop, expect network mutex to be released here");
             },
-
-            Err(_) => {
-
+            // Check the stop condition
+            _ = tokio::task::yield_now() => {
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
             }
         }
     }
@@ -223,13 +224,107 @@ pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<Ato
     Ok(())
 }
 
+
+// pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<AtomicBool>, receiver: mpsc::Receiver<(u64, u64)>) -> Result<(), String> {
+
+//     let stream = ReceiverStream::new(receiver);
+
+//     loop {
+
+//         // if we are asked to stop :)
+//         let should_stop = stop.load(std::sync::atomic::Ordering::Relaxed);
+//         if should_stop {
+//             break;
+//         }
+
+//         // Convert the receiver into a stream
+        
+//         stream.for_each(|pair| async move {
+//             let (chain_id, block_number) = pair;
+
+            
+
+//         }).await;
+
+    //    // attempt to see if we are receiving a block, with a timeout to loop again in 1000ms.
+    //     match receiver.recv().await {
+    //         Some((chain_id, block_number)) => {
+
+    //             let mut matched_http_provider: Option<Provider<Http>> = None;
+               
+    //             {
+    //                 let mut networks = arc_networks.lock().unwrap();
+    //                 for network in &mut *networks {
+    //                     if network.chain_id == chain_id {
+
+    //                         let previous_network_block = network.latest_block;
+    //                         network.latest_block = block_number;
+
+    //                         if previous_network_block > 0 {
+    //                             println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
+    //                                         chain_id, network.config.name.clone(), block_number, previous_network_block);
+    //                         } else {
+    //                             println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
+    //                                         chain_id, network.config.name.clone(), block_number);
+    //                         }
+
+    //                         matched_http_provider = Some(network.http.clone());
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+
+    //             match matched_http_provider {
+    //                 Some(http_provider) => {
+    //                     // Define the Transfer event signature
+    //                     let event_signature = "Transfer(address,address,uint256)";
+
+    //                     let filter = Filter::new()
+    //                         .event(event_signature)
+    //                         .from_block(block_number)
+    //                         .to_block(block_number);
+
+    //                     let logs = http_provider.get_logs(&filter).await;
+    //                     match logs {
+    //                         Ok(logs) => {
+
+    //                             if logs.len() == 0 {
+    //                                 println!("No transfers in block {}", block_number);
+    //                             }
+
+    //                             for log in logs {
+    //                                 println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
+    //                             }
+    //                         },
+    //                         Err(_) => {
+    //                             eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
+    //                         }
+    //                     }   
+    //                 },
+    //                 None => {
+
+    //                 }
+    //             }
+                    
+    //             println!("out of the network loop, expect network mutex to be released here");
+    //         },
+
+    //         None => {
+
+    //         }
+//     //     }
+//     }
+
+//     Ok(())
+// }
+
 impl NetworkService {
 
     pub async fn try_initialize(network_configurations: Vec<NetworkConfiguration>) -> Result<Self, String> {
 
         let mut networks: Vec<Network> = Vec::new();
 
-        let (sender, receiver) = mpsc::channel::<(u64, u64)>();
+        let (sender, receiver) = mpsc::channel::<(u64, u64)>(10);
 
         for network_configuration in network_configurations {
             let network = Network::try_initialize(network_configuration).await?;
