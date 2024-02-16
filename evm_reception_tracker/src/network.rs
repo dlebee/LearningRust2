@@ -1,7 +1,8 @@
 use std::{sync::{atomic::AtomicBool, mpsc::{self, Sender}}, time::Duration};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use ethers::{providers::{Http, Middleware, Provider, Ws}, types::Filter};
+use std::sync::Mutex;
 use tokio::time;
 use tokio_stream::{StreamExt, StreamMap};
 
@@ -113,6 +114,7 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
                 let cloned_chain_id = chain_id.clone();
                 let cloned_block_number = block.number.unwrap().as_u64();
 
+                println!("sending new block {} {}", cloned_chain_id, cloned_block_number);
 
                 match sender.send((cloned_chain_id, cloned_block_number)) {
                     Ok(()) => {
@@ -138,6 +140,76 @@ pub async fn listen_for_blocks(pairs: Vec<(NetworkConfiguration, u64, Provider<W
     return Ok(());
 }
 
+
+pub async fn get_transfers(arc_networks: Arc<Mutex<Vec<Network>>>, stop: Arc<AtomicBool>, receiver: mpsc::Receiver<(u64, u64)>) -> Result<(), String> {
+
+    loop {
+
+        // if we are asked to stop :)
+        let should_stop = stop.load(std::sync::atomic::Ordering::Relaxed);
+        if should_stop {
+            break;
+        }
+
+        // attempt to see if we are receiving a block, with a timeout to loop again in 1000ms.
+        match receiver.recv_timeout(Duration::from_millis(1000)) {
+            Ok((chain_id, block_number)) => {
+
+                let mut networks = arc_networks.lock().unwrap(); 
+                for network in &mut *networks {
+                    if network.chain_id == chain_id {
+
+                        let previous_network_block = network.latest_block;
+                        network.latest_block = block_number;
+
+                        if previous_network_block > 0 {
+                            println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
+                                        chain_id, network.config.name.clone(), block_number, previous_network_block);
+                        } else {
+                            println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
+                                        chain_id, network.config.name.clone(), block_number);
+                        }
+                    
+                    
+                        // // Define the Transfer event signature
+                        // let event_signature = "Transfer(address,address,uint256)";
+
+                        // let filter = Filter::new()
+                        //     .event(event_signature)
+                        //     .from_block(block_number)
+                        //     .to_block(block_number);
+
+                        // let logs = network.http.clone().get_logs(&filter).await;
+                        // match logs {
+                        //     Ok(logs) => {
+
+                        //         if logs.len() == 0 {
+                        //             println!("No transfers in block {}", block_number);
+                        //         }
+
+                        //         for log in logs {
+                        //             println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
+                        //         }
+                        //     },
+                        //     Err(_) => {
+                        //         eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
+                        //     }
+                        // }   
+                    }
+                }
+
+                println!("out of the network loop, expect network mutex to be released here");
+            },
+
+            Err(_) => {
+
+            }
+        }
+    }
+
+    Ok(())
+}
+
 impl NetworkService {
 
     pub async fn try_initialize(network_configurations: Vec<NetworkConfiguration>) -> Result<Self, String> {
@@ -160,66 +232,14 @@ impl NetworkService {
 
         let arc_stop = Arc::new(AtomicBool::new(false));
         let arc_cloned = arc_stop.clone();
-        let _network_block_watcher = tokio::spawn(async move { 
+        let _ = tokio::spawn(async move { 
             listen_for_blocks(chain_and_provider, sender, arc_cloned).await 
         });
 
-        let cloned_arc = arc_networks.clone();
-        let arc_stop_cloned2 = arc_stop.clone();
-        let _block_updater = tokio::spawn(async move {
-
-            loop {
-                match receiver.recv_timeout(Duration::from_millis(1000)) {
-                    Ok((chain_id, block_number)) => {
-
-                        let mut networks = cloned_arc.lock().unwrap();
-                        for network in &mut *networks {
-                            if network.chain_id == chain_id {
-
-                                let previous_network_block = network.latest_block;
-                                network.latest_block = block_number;
-
-                                if previous_network_block > 0 {
-                                    println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
-                                                chain_id, network.config.name.clone(), block_number, previous_network_block);
-                                } else {
-                                    println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
-                                                chain_id, network.config.name.clone(), block_number);
-                                }
-                            
-                                // // Define the Transfer event signature
-                                // let event_signature = "Transfer(address,address,uint256)";
-
-                                // let filter = Filter::new()
-                                //     .event(event_signature)
-                                //     .from_block(block_number)
-                                //     .to_block(block_number);
-
-                                // let logs = network.http.clone().get_logs(&filter).await;
-                                // match logs {
-                                //     Ok(logs) => {
-                                //         for log in logs {
-                                //             println!("Tranfer, transaction hash: {}, signer: {}", log.transaction_hash.unwrap(), log.address);
-                                //         }
-                                //     },
-                                //     Err(err) => {
-                                //         eprint!("Failed to get logs of block {} from chain {}", block_number, chain_id);
-                                //     }
-                                // }   
-                            }
-                        }
-                                  
-                    },
-                    Err(_) => {
-
-                    }
-                }
-
-                let should_stop = arc_stop_cloned2.load(std::sync::atomic::Ordering::Relaxed);
-                if should_stop {
-                    break;
-                }
-            } 
+        let cloned_arc_networks_for_get_transfers = arc_networks.clone();
+        let cloned_stop_for_get_transfers = arc_stop.clone();
+        let _ = tokio::spawn(async move {
+            let _ = get_transfers(cloned_arc_networks_for_get_transfers, cloned_stop_for_get_transfers, receiver).await;
         });
 
         Ok(Self {
