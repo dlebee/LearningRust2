@@ -1,5 +1,6 @@
 use std::{sync::{atomic::AtomicBool}, time::Duration};
 use std::sync::{Arc};
+use chrono::{DateTime, Local};
 
 use ethers::{abi::AbiEncode, providers::{Http, Middleware, Provider, Ws}, types::{H160}};
 use std::sync::Mutex;
@@ -22,7 +23,8 @@ pub struct Network {
     pub wss: Provider<Ws>,
     pub http: Provider<Http>,
     pub chain_id: u64,
-    pub latest_block: u64
+    pub latest_block: u64,
+    pub last_saved_time: DateTime<Local>
 }
 
 pub struct NetworkService {
@@ -88,7 +90,8 @@ impl Network {
             chain_id: http_chain_id.as_u64(),
             wss: wss_provider,
             http: http_provider,
-            latest_block: 0
+            latest_block: 0,
+            last_saved_time: Local::now()
         })
     }
 }
@@ -164,10 +167,18 @@ pub async fn get_transfers(
                             network.latest_block = block_number;
 
                             if previous_network_block > 0 {
-                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}",
-                                            chain_id, network.config.name.clone(), block_number, previous_network_block);
+
+                                // we have a previous block lets calculate the time since.
+                                let now = Local::now();
+                                let duration = now.signed_duration_since(network.last_saved_time);
+                                network.last_saved_time = now;
+
+                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: {}, time since: {}",
+                                            chain_id, network.config.name.clone(), block_number, previous_network_block, duration);
                             } else {
-                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A",
+
+
+                                println!("📦 New block picked up, chainId {}, name: {}, block: {}, previous block received: N/A, time since: N/A",
                                             chain_id, network.config.name.clone(), block_number);
                             }
 
