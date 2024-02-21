@@ -1,12 +1,15 @@
 mod network;
 mod network_service;
 mod block_watcher_service;
+mod transfer_watcher_service;
+
+use std::{borrow::Borrow, cell::Cell, sync::Arc};
 
 use block_watcher_service::BlockWatcherService;
 use network_service::NetworkService;
 use tokio::signal;
 
-use crate::network::{NetworkConfiguration};
+use crate::{network::NetworkConfiguration, transfer_watcher_service::TransferWatcherService};
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -24,7 +27,8 @@ async fn main() -> Result<(), String> {
         },
     ]).await?;
 
-    let block_watcher = BlockWatcherService::try_initialize(network_service).await?;
+    let block_watcher = BlockWatcherService::try_initialize(network_service.clone()).await?;
+    let _transfer_watcher = TransferWatcherService::try_initialize(network_service.clone(), block_watcher).await?;
 
         // Create a stream for Ctrl+C signals
     println!("Running. Press Ctrl+C to exit.");

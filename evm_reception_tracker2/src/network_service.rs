@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::network::{Network, NetworkConfiguration};
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct NetworkService {
     networks: HashMap<ethers::types::U256, Network>
 }
