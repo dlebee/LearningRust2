@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use ethers::{providers::{Http, Middleware, Provider, Ws}};
-use tokio::sync::Mutex;
+use ethers::providers::{Http, Middleware, Provider, Ws};
 
 #[derive(Debug)]
 #[derive(Clone)]

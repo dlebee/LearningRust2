@@ -9,6 +9,7 @@ pub struct NetworkService {
 }
 
 impl NetworkService {
+
     pub async fn try_initialize(network_configurations: Vec<NetworkConfiguration>) -> Result<Self, String> {
 
         let mut network_map: HashMap<ethers::types::U256, Network> = HashMap::new();
@@ -27,15 +28,15 @@ impl NetworkService {
         })
     }
 
-    pub fn get_network_by_name(self, name: String) -> Option<Network> {
-        for (_chain_id, network) in self.networks {
-            if network.config.name == name {
-                return Some(network);
-            }
-        }
+    // pub fn get_network_by_name(self, name: String) -> Option<Network> {
+    //     for (_chain_id, network) in self.networks {
+    //         if network.config.name == name {
+    //             return Some(network);
+    //         }
+    //     }
 
-        None
-    }
+    //     None
+    // }
 
     pub fn get_network_by_chainid(self, chain_id: ethers::types::U256) -> Option<Network> {
         let network = self.networks.get(&chain_id);

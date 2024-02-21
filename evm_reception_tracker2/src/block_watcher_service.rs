@@ -1,18 +1,23 @@
-use std::{cell::Cell, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{atomic::AtomicBool, Arc}};
 
-use ethers::{contract::stream, core::k256::elliptic_curve::rand_core::block, providers::Middleware};
+use ethers::providers::Middleware;
 use tokio::{sync::{broadcast::{self, Sender}, Mutex}, time};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt, StreamMap};
 
-use crate::{network::{Network}, network_service::{NetworkService}};
+use crate::{network::Network, network_service::NetworkService};
 
+#[derive(Debug)]
 pub struct BlockWatcherService {
-    latest_blocks: Arc<Mutex<HashMap<ethers::types::U256, u64>>>,
-    pub block_rx: broadcast::Receiver<(ethers::types::U256, u64)>
+    pub latest_blocks: Arc<Mutex<HashMap<ethers::types::U256, u64>>>,
+    pub block_rx: broadcast::Receiver<(ethers::types::U256, u64)>,
+    stopping: Arc<AtomicBool>
 }
 
-pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>, block_rx: Sender<(ethers::types::U256, u64)>) -> Result<(), String> {
+pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>, 
+    block_rx: Sender<(ethers::types::U256, u64)>,
+    stopping: Arc<AtomicBool>) -> Result<(), String> {
 
+    
     let mut stream_map = StreamMap::new();
     for (chain_id, network) in &networks {
 
@@ -28,6 +33,11 @@ pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>, 
     }
 
     loop {
+
+        if stopping.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+
         tokio::select! {
             Some((chain_id, block)) = stream_map.next() => {
                 match block_rx.send((chain_id, block.number.unwrap().as_u64())) {
@@ -51,24 +61,39 @@ pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>, 
 }
 
 impl BlockWatcherService {
+
+    pub async fn cleanup(self) {
+        self.stopping.store(true, std::sync::atomic::Ordering::Release);
+    }
+
     pub async fn try_initialize(network_service: NetworkService) -> Result<Self, String> {
         
+        let stopping = Arc::new(AtomicBool::new(false));
+
         let latest_block_map: HashMap<ethers::types::U256, u64> = HashMap::new();
         let latest_block_map_arc_mutex = Arc::new(Mutex::new(latest_block_map));
 
-        let (block_tx, mut block_rx) = broadcast::channel::<(ethers::types::U256, u64)>(100);
+        let (block_tx, block_rx) = broadcast::channel::<(ethers::types::U256, u64)>(100);
 
         let networks = network_service.get_networks();
+        let listen_for_blocks_stop = stopping.clone();
         let _ = tokio::spawn(async move {
-            let _ = listen_for_blocks(networks, block_tx).await;
+            let _ = listen_for_blocks(networks, block_tx, listen_for_blocks_stop).await;
         });
 
         let cloned_block_rx = block_rx.resubscribe();
         let cloned_arc = latest_block_map_arc_mutex.clone();
+        let clone_stop_update_latest_block = stopping.clone();
+
         tokio::spawn(async move {
             
             let mut stream = BroadcastStream::new(cloned_block_rx);
             loop {
+
+                if clone_stop_update_latest_block.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+
                 tokio::select! {
                     Some(block_stream_result) = stream.next() => {
                         match block_stream_result {
@@ -89,7 +114,8 @@ impl BlockWatcherService {
 
         Ok(Self {
             latest_blocks: latest_block_map_arc_mutex,
-            block_rx
+            block_rx,
+            stopping
         })
     }   
 }
