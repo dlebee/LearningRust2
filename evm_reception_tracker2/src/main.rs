@@ -2,12 +2,14 @@ mod network;
 mod network_service;
 mod block_watcher_service;
 mod transfer_watcher_service;
+mod pending_transation_watcher_service;
 
 use block_watcher_service::BlockWatcherService;
 use network_service::NetworkService;
 use tokio::signal;
 
 use crate::{network::NetworkConfiguration, transfer_watcher_service::TransferWatcherService};
+use crate::pending_transation_watcher_service::PendingTransactionWatcherService;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -27,6 +29,7 @@ async fn main() -> Result<(), String> {
 
     let block_watcher = BlockWatcherService::try_initialize(network_service.clone()).await?;
     let transfer_watcher = TransferWatcherService::try_initialize(network_service.clone(), block_watcher.block_rx.resubscribe()).await?;
+    let pending_transaction_watcher = PendingTransactionWatcherService::try_initialize(network_service.clone()).await?;
 
         // Create a stream for Ctrl+C signals
     println!("Running. Press Ctrl+C to exit.");
@@ -36,6 +39,7 @@ async fn main() -> Result<(), String> {
 
     block_watcher.cleanup().await;
     transfer_watcher.cleanup().await;
+    pending_transaction_watcher.cleanup().await;
 
 
     Ok(())

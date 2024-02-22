@@ -49,7 +49,6 @@ pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>,
                             block.number.unwrap(), chain_id, e);
                     }
                 }
-                println!("stream received a new block {} for chain id {}", block.number.unwrap(), chain_id);
             },
             _ = time::sleep(time::Duration::from_millis(1000), ) =>{
 
