@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use std::fmt::format;
-use std::future::pending;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use ethers::abi::{AbiEncode, token};
+use ethers::abi::{AbiEncode};
 use ethers::middleware::Middleware;
+use futures::FutureExt;
 use tokio::time;
 use tokio_stream::{StreamExt, StreamMap};
+use crate::background_service::BackgroundService;
 use crate::network::Network;
 use crate::network_service::NetworkService;
 
@@ -25,7 +27,7 @@ async fn listen_for_pending_transactions(networks: HashMap<ethers::types::U256, 
                 stream_map.insert(chain_id, stream);
             },
             Err(e) => {
-                return Err(format!("failed to create stream for watching pending transactions for network {} and chainid {}", network.config.name, chain_id));
+                return Err(format!("failed to create stream for watching pending transactions for network {} and chainid {}, error: {}", network.config.name, chain_id, e));
             }
         }
     }
@@ -62,7 +64,7 @@ async fn listen_for_pending_transactions(networks: HashMap<ethers::types::U256, 
                                 }
                             },
                             Err(e) => {
-                                eprintln!("failed to fetch transaction from provider of chain {} with hash {}", chain_id, pending_transaction_hash);
+                                eprintln!("failed to fetch transaction from provider of chain {} with hash {}, error: {}", chain_id, pending_transaction_hash, e);
                             }
                         }
 
@@ -81,11 +83,15 @@ async fn listen_for_pending_transactions(networks: HashMap<ethers::types::U256, 
     Ok(())
 }
 
-impl PendingTransactionWatcherService {
-
-    pub async fn cleanup(self) {
-        self.stopping.store(true, Ordering::Release);
+impl BackgroundService for PendingTransactionWatcherService {
+    fn cleanup(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+        self.stopping.store(true, std::sync::atomic::Ordering::Release);
+        async {
+        }.boxed()
     }
+}
+
+impl PendingTransactionWatcherService {
 
     pub async fn try_initialize(network_service: NetworkService) -> Result<Self, String> {
 
@@ -94,7 +100,7 @@ impl PendingTransactionWatcherService {
         let stopping_clone = stopping.clone();
         let networks = network_service.get_networks();
         let _ = tokio::spawn(async move {
-            listen_for_pending_transactions(networks, stopping_clone).await;
+            let _ = listen_for_pending_transactions(networks, stopping_clone).await;
         });
 
         Ok(Self {

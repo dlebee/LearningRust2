@@ -1,8 +1,12 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{atomic::AtomicBool, Arc};
 
 use ethers::{abi::AbiEncode, providers::Middleware};
+use futures::FutureExt;
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
+use crate::background_service::BackgroundService;
 
 use crate::network_service::NetworkService;
 
@@ -72,10 +76,6 @@ async fn listen_for_transfers(network_service: NetworkService, block_rx: Receive
 
 impl TransferWatcherService {
 
-    pub async fn cleanup(self) {
-        self.stopping.store(true, std::sync::atomic::Ordering::Release);
-    }
-
     pub async fn try_initialize(
         network_service: NetworkService,
         block_rx: Receiver<(ethers::types::U256, u64)>
@@ -91,5 +91,13 @@ impl TransferWatcherService {
         Ok(Self {
             stopping
         })
+    }
+}
+
+impl BackgroundService for TransferWatcherService {
+    fn cleanup(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+        self.stopping.store(true, std::sync::atomic::Ordering::Release);
+        async {
+        }.boxed()
     }
 }

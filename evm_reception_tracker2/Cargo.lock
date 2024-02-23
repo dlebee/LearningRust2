@@ -1030,6 +1030,7 @@ dependencies = [
  "chrono",
  "ethers",
  "eyre",
+ "futures",
  "tokio",
  "tokio-stream",
 ]

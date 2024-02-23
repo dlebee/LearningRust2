@@ -3,13 +3,16 @@ mod network_service;
 mod block_watcher_service;
 mod transfer_watcher_service;
 mod pending_transation_watcher_service;
+mod background_service;
 
 use block_watcher_service::BlockWatcherService;
 use network_service::NetworkService;
 use tokio::signal;
 
+use crate::background_service::BackgroundService;
 use crate::{network::NetworkConfiguration, transfer_watcher_service::TransferWatcherService};
 use crate::pending_transation_watcher_service::PendingTransactionWatcherService;
+use futures::future::{join_all};
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -33,14 +36,20 @@ async fn main() -> Result<(), String> {
 
         // Create a stream for Ctrl+C signals
     println!("Running. Press Ctrl+C to exit.");
-    let mut _ctrl_c = signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    let _ctrl_c = signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
 
     println!("latest block when the application stopped {:?}", block_watcher.latest_blocks);
 
-    block_watcher.cleanup().await;
-    transfer_watcher.cleanup().await;
-    pending_transaction_watcher.cleanup().await;
+    let mut clean_up_futures = Vec::new();
+    let background_services: Vec<Box<dyn BackgroundService>> = vec![
+        Box::new(block_watcher),
+        Box::new(transfer_watcher),
+        Box::new(pending_transaction_watcher)
+    ];
+    for background_service in background_services {
+        clean_up_futures.push(background_service.cleanup());
+    }
 
-
+    join_all(clean_up_futures).await;
     Ok(())
 }

@@ -11,3 +11,4 @@ tokio = { features = ["full"] }
 tokio-stream = { features = ["full"] }
 eyre = { version = "0.6", features = [] }
 chrono = "0.4"
+futures = "0.3.30"

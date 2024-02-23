@@ -1,10 +1,14 @@
 use std::{collections::HashMap, sync::{atomic::AtomicBool, Arc}};
+use std::future::Future;
+use std::pin::Pin;
 
 use ethers::providers::Middleware;
+use futures::FutureExt;
 use tokio::{sync::{broadcast::{self, Sender}, Mutex}, time};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt, StreamMap};
 
 use crate::{network::Network, network_service::NetworkService};
+use crate::background_service::BackgroundService;
 
 #[derive(Debug)]
 pub struct BlockWatcherService {
@@ -61,10 +65,6 @@ pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>,
 
 impl BlockWatcherService {
 
-    pub async fn cleanup(self) {
-        self.stopping.store(true, std::sync::atomic::Ordering::Release);
-    }
-
     pub async fn try_initialize(network_service: NetworkService) -> Result<Self, String> {
         
         let stopping = Arc::new(AtomicBool::new(false));
@@ -117,4 +117,12 @@ impl BlockWatcherService {
             stopping
         })
     }   
+}
+
+impl BackgroundService for BlockWatcherService {
+    fn cleanup(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+        self.stopping.store(true, std::sync::atomic::Ordering::Release);
+        async {
+        }.boxed()
+    }
 }
