@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::env;
 
 const SEPARATOR: &str = "__";
+const QUERY_SEPARATOR: char = ':';
 
 #[derive(Clone, Debug)]
 pub enum Configuration {
@@ -25,11 +26,48 @@ pub struct ConfigurationService {
 }
 
 impl ConfigurationService {
+
+    pub fn get(&self, key: &str) -> Option<&Configuration> {
+        let mut result = None;
+        let mut current_parent = &self.settings;
+
+        let lower_case_key = key.to_lowercase();
+        let parts: Vec<&str> = lower_case_key.split(QUERY_SEPARATOR).collect();
+        let last_index = parts.len() - 1;
+
+        for (index, key_part) in parts.iter().enumerate() {
+            let string_key_part = String::from(*key_part);
+            if last_index == index {
+                return current_parent.get(&string_key_part);
+            } else {
+                match current_parent.get(&string_key_part) {
+                    Some(result) => {
+                        match result {
+                            Configuration::SubConfiguration(map) => {
+                                current_parent = map;
+                            },
+                            _ => {
+                                // not suppose to happen...
+                                return None;
+                            }
+                        }
+                    },
+                    None => {
+                        return None;
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     pub fn new() -> Self {
         let mut settings = HashMap::new();
 
         for (key, value) in env::vars() {
-            let key_parts: Vec<&str> = key.split(SEPARATOR).collect();
+            let lower_case_key = key.to_lowercase();
+            let key_parts: Vec<&str> = lower_case_key.split(SEPARATOR).collect();
             let mut current_parent = &mut settings;
 
             for (index, key_part) in key_parts.iter().enumerate() {

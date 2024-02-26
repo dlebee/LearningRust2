@@ -1,11 +1,13 @@
-use crate::configuration_service::ConfigurationService;
+use crate::configuration_service::{Configuration, ConfigurationService};
 use dotenv::dotenv;
+use crate::network_service::NetworkService;
 
 mod configuration_service;
+mod network_service;
 
 fn main() {
     dotenv().ok();
-    let _configuration_service = ConfigurationService::new();
-
-    println!("{:?}", _configuration_service);
+    let configuration_service = ConfigurationService::new();
+    let network_service = NetworkService::new(configuration_service);
+    println!("{:?}", network_service);
 }
