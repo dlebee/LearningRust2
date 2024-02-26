@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use nject::injectable;
 
 const SEPARATOR: &str = "__";
 const QUERY_SEPARATOR: char = ':';
@@ -21,13 +22,20 @@ impl Configuration {
 }
 
 #[derive(Debug, Clone)]
+#[injectable]
 pub struct ConfigurationService {
+    #[inject(false)]
+    initialized: bool,
+    #[inject(HashMap::new())]
     settings: HashMap<String, Configuration>,
 }
 
 impl ConfigurationService {
 
-    pub fn get(&self, key: &str) -> Option<&Configuration> {
+    pub fn get(&mut self, key: &str) -> Option<&Configuration> {
+
+        self.initialize();
+
         let mut result = None;
         let mut current_parent = &self.settings;
 
@@ -62,7 +70,12 @@ impl ConfigurationService {
         result
     }
 
-    pub fn new() -> Self {
+    pub fn initialize(&mut self) {
+
+        if self.initialized {
+            return;
+        }
+
         let mut settings = HashMap::new();
 
         for (key, value) in env::vars() {
@@ -85,6 +98,6 @@ impl ConfigurationService {
             }
         }
 
-        Self { settings }
+        self.settings = settings;
     }
 }
