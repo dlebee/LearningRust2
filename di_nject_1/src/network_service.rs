@@ -15,12 +15,18 @@ pub struct NetworkService {
     #[inject(false)]
     initialized: bool,
     #[inject(Vec::new())]
-    pub networks: Vec<NetworkConfiguration>,
+    networks: Vec<NetworkConfiguration>,
 
     configuration: ConfigurationService
 }
 
 impl NetworkService {
+
+    pub fn get_networks(&mut self) -> Vec<NetworkConfiguration> {
+        self.initialize();
+        self.networks.clone()
+    }
+
     pub fn initialize(&mut self) {
 
         if self.initialized {

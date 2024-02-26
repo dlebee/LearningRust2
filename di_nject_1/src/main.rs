@@ -13,7 +13,5 @@ struct Provider;
 fn main() {
     dotenv().ok();
     let mut network_service: NetworkService = Provider.provide();
-    println!("{:?}", network_service.networks);
-    network_service.initialize();
-    println!("{:?}", network_service.networks);
+    println!("{:?}", network_service.get_networks());
 }
