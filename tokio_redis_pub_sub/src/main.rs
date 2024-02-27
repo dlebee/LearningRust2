@@ -18,12 +18,21 @@ async fn subscribe() -> mini_redis::Result<()> {
     let subscriber = client.subscribe(vec!["numbers".to_string()]).await?;
     let messages = subscriber
         .into_stream()
-        .filter(|msg| match msg {
-            Ok(msg) => match String::from(from_utf8(&msg.content).unwrap()).parse::<i32>() {
-                Ok(_) => true,
+        .filter(|msg| -> bool {
+            match msg {
+                Ok(msg) => {
+                    match from_utf8(&msg.content) {
+                        Ok(msg_content_str) => {
+                            match String::from(msg_content_str).parse::<i32>() {
+                                Ok(_) => true,
+                                _ => false
+                            }
+                        },
+                        _ => false
+                    }
+                },
                 _ => false
-            },
-            _ => false
+            }
         });
 
     tokio::pin!(messages);
