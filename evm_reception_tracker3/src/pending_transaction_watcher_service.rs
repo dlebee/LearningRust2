@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use ethers::abi::{AbiEncode};
 use ethers::middleware::Middleware;
+use tokio::task::JoinHandle;
 use tokio_stream::{StreamExt, StreamMap};
 use tokio_util::sync::CancellationToken;
 use crate::network::Network;
 use crate::network_service::NetworkService;
 
 pub struct PendingTransactionWatcherService {
+    pub handle: JoinHandle<()>
 }
 
 async fn listen_for_pending_transactions(networks: HashMap<ethers::types::U256, Network>, stop_token: CancellationToken) -> Result<(), String> {
@@ -78,11 +80,13 @@ impl PendingTransactionWatcherService {
 
         let stopping_clone = stop_token.clone();
         let networks = network_service.get_networks();
-        let _ = tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let _ = listen_for_pending_transactions(networks, stopping_clone).await;
+            ()
         });
 
         Ok(Self {
+            handle
         })
     }
 }

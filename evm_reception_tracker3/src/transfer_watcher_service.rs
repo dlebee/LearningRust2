@@ -1,12 +1,14 @@
 use ethers::abi::AbiEncode;
 use ethers::middleware::Middleware;
 use tokio::sync::broadcast::Receiver;
+use tokio::task::JoinHandle;
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tokio_util::sync::CancellationToken;
 
 use crate::network_service::NetworkService;
 
 pub struct TransferWatcherService {
+    pub handle: JoinHandle<()>
 }
 
 async fn listen_for_transfers(network_service: NetworkService, block_rx: Receiver<(ethers::types::U256, u64)>, stop_token: CancellationToken) {
@@ -76,11 +78,13 @@ impl TransferWatcherService {
     ) -> Result<Self, String> {
 
         let stop_token_clone = stop_token.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             listen_for_transfers(network_service, block_rx, stop_token_clone).await;
+            ()
         });
 
         Ok(Self {
+            handle
         })
     }
 }

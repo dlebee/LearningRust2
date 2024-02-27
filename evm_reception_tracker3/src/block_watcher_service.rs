@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::{Arc}};
 use ethers::providers::Middleware;
 use tokio::{sync::{broadcast::{self, Sender}, Mutex}};
+use tokio::task::JoinHandle;
 use tokio_stream::{wrappers::BroadcastStream, StreamMap, StreamExt};
 use tokio_util::sync::CancellationToken;
 
@@ -9,7 +10,9 @@ use crate::{network::Network, network_service::NetworkService};
 #[derive(Debug)]
 pub struct BlockWatcherService {
     pub latest_blocks: Arc<Mutex<HashMap<ethers::types::U256, u64>>>,
-    pub block_rx: broadcast::Receiver<(ethers::types::U256, u64)>
+    pub block_rx: broadcast::Receiver<(ethers::types::U256, u64)>,
+    pub block_listener_handle: JoinHandle<()>,
+    pub latest_block_handle: JoinHandle<()>,
 }
 
 pub async fn listen_for_blocks(networks: HashMap<ethers::types::U256, Network>, 
@@ -64,15 +67,16 @@ impl BlockWatcherService {
 
         let networks = network_service.get_networks();
         let stop_token_clone = stop_token.clone();
-        let _ = tokio::spawn(async move {
+        let block_listener_handle = tokio::spawn(async move {
             let _ = listen_for_blocks(networks, block_tx, stop_token_clone).await;
+            ()
         });
 
         let cloned_block_rx = block_rx.resubscribe();
         let cloned_arc = latest_block_map_arc_mutex.clone();
         let clone_stop_token_latest_block = stop_token.clone();
 
-        tokio::spawn(async move {
+        let latest_block_handle = tokio::spawn(async move {
             
             let mut stream = BroadcastStream::new(cloned_block_rx);
             loop {
@@ -95,11 +99,15 @@ impl BlockWatcherService {
                     }
                 }
             }
+
+            ()
         });
 
         Ok(Self {
             latest_blocks: latest_block_map_arc_mutex,
-            block_rx
+            block_rx,
+            block_listener_handle,
+            latest_block_handle
         })
     }   
 }
