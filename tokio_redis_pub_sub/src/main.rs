@@ -1,5 +1,7 @@
 use std::str::from_utf8;
+use std::time::Duration;
 use tokio_stream::{StreamExt};
+use tokio::time::sleep;
 use mini_redis::client;
 
 async fn publish() -> mini_redis::Result<()> {
@@ -33,6 +35,10 @@ async fn subscribe() -> mini_redis::Result<()> {
                 },
                 _ => false
             }
+        })
+        .map(|msg| -> i32 {
+            from_utf8(&msg.unwrap().content).unwrap().parse::<i32>()
+                .expect("Should not crash here, due to filter before")
         });
 
     tokio::pin!(messages);
@@ -47,12 +53,14 @@ async fn subscribe() -> mini_redis::Result<()> {
 #[tokio::main]
 async fn main() -> mini_redis::Result<()> {
 
+
+
+
     tokio::spawn(async {
         publish().await;
     });
 
     subscribe().await?;
-
     println!("DONE");
 
     Ok(())
