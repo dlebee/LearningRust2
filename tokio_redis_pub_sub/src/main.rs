@@ -1,3 +1,4 @@
+use std::str::from_utf8;
 use tokio_stream::{StreamExt};
 use mini_redis::client;
 
@@ -15,7 +16,15 @@ async fn publish() -> mini_redis::Result<()> {
 async fn subscribe() -> mini_redis::Result<()> {
     let client = client::connect("127.0.0.1:6379").await?;
     let subscriber = client.subscribe(vec!["numbers".to_string()]).await?;
-    let messages = subscriber.into_stream();
+    let messages = subscriber
+        .into_stream()
+        .filter(|msg| match msg {
+            Ok(msg) => match String::from(from_utf8(&msg.content).unwrap()).parse::<i32>() {
+                Ok(_) => true,
+                _ => false
+            },
+            _ => false
+        });
 
     tokio::pin!(messages);
 
