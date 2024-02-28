@@ -10,6 +10,12 @@ macro_rules! field_get_set {
     };
 }
 
+macro_rules! print_value {
+    ($val:expr) => {
+        println!("The value is: {}", $val);
+    };
+}
+
 struct Person {
     name: String,
     age: u32,
@@ -30,4 +36,6 @@ fn main() {
 
     david.set_name(String::from("David L."));
     println!("Updated name: {}", david.get_name());
+
+    print_value!(david.get_name());
 }
